@@ -50,7 +50,7 @@ flowchart LR
 | 接口 | 作用 |
 |------|------|
 | `typedef struct RumaxClient RumaxClient;` | 不透明句柄（内部为 `Box<Arc<MaxClient>>` + runtime + 回调） |
-| `typedef void (*rumax_event_cb)(const char* event_json, void* user_data);` | 事件回调函数指针 |
+| `typedef void (*rumax_event_cb)(const char* source, const char* event_json, void* user_data);` | 事件回调函数指针（`source` 由库侧在发送事件时定义，rumax 为 "mas.rumax"） |
 | `void rumax_string_free(char* s);` | 释放由 Rust 分配的字符串（**必须**用它释放所有 `char*` 返回值） |
 | `const char* rumax_version(void);` | 返回库版本（静态字符串，无需释放） |
 
@@ -105,7 +105,7 @@ flowchart LR
 
 | 接口 | 作用 | 说明 |
 |------|------|------|
-| `void rumax_client_set_event_callback(RumaxClient* c, rumax_event_cb cb, void* user_data);` | 注册事件回调 | 内部 `subscribe()` 并启动转发任务；`cb == NULL` 表示取消 |
+| `void rumax_client_set_event_callback(RumaxClient* c, rumax_event_cb cb, void* user_data);` | 注册事件回调 | 内部 `subscribe()` 并启动转发任务；回调带 `source`；`cb == NULL` 表示停止该客户端转发 |
 
 推送格式（JSON，兼容现有 `subscribe()` 广播）：
 

@@ -25,15 +25,26 @@ use tokio::sync::broadcast;
 use crate::models::{Identity, UserAgent};
 use crate::{MaxClient, QrLoginSession, SyncState};
 
-/// Callback invoked for every server push / log event (UTF-8 JSON).
+/// 事件来源标识，由本库在发送事件时定义（作为回调的 `source` 参数）。
+pub const RUMAX_EVENT_SOURCE: &[u8] = b"mas.rumax\0";
+
+/// Callback invoked for every server push / log event.
 ///
-/// `event_json` is only valid for the duration of the call — copy it if you need
-/// to keep it. The callback runs on a Rust runtime thread: do not block, and do
-/// not call [`rumax_client_call`] from inside it (it would deadlock); use a
-/// background queue or the async variant instead.
+/// - `source` identifies the emitting library (always `"mas.rumax"` here); it is
+///   defined by this library so that a single global listener can tell origins apart.
+/// - `event_json` is UTF-8 JSON and is only valid for the duration of the call.
+/// - `user_data` is the opaque pointer passed to `rumax_client_set_event_callback`.
+///
+/// The callback runs on a Rust runtime thread: do not block, and do not call
+/// [`rumax_client_call`] from inside it (it would deadlock).
 #[allow(non_camel_case_types)]
-pub type rumax_event_cb =
-    Option<unsafe extern "C" fn(event_json: *const c_char, user_data: *mut c_void)>;
+pub type rumax_event_cb = Option<
+    unsafe extern "C" fn(
+        source: *const c_char,
+        event_json: *const c_char,
+        user_data: *mut c_void,
+    ),
+>;
 
 struct EventSink {
     cb: rumax_event_cb,
@@ -415,7 +426,7 @@ pub unsafe extern "C" fn rumax_client_set_event_callback(
                     };
                     if let Some(cb) = cb {
                         if let Ok(cstr) = CString::new(text) {
-                            cb(cstr.as_ptr(), user);
+                            cb(RUMAX_EVENT_SOURCE.as_ptr() as *const c_char, cstr.as_ptr(), user);
                         }
                     }
                 }

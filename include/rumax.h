@@ -28,16 +28,21 @@ typedef struct RumaxClient RumaxClient;
 
 /*
  * Event callback, invoked for every server push / log event.
+ *
+ * `source` identifies the emitting library and is defined by that library
+ * (for rumax it is always "mas.rumax"). It lets one global listener that is
+ * shared by several native libraries tell the origins apart.
  * `event_json` is UTF-8 JSON and is only valid for the duration of the call.
- * It runs on a Rust runtime thread: do not block and do not call the blocking
- * API from inside it.
+ * `user_data` is the pointer passed to rumax_client_set_event_callback.
+ * The callback runs on a Rust runtime thread: do not block and do not call the
+ * blocking API from inside it.
  *
  * Event JSON shapes:
  *   { "type": "rx",  "response": { "ver":10, "cmd":0, "seq":0, "opcode":128, "payload": {...} } }
  *   { "type": "log", "request":  {...} }
  *   { "type": "log", "response": {...} }
  */
-typedef void (*rumax_event_cb)(const char* event_json, void* user_data);
+typedef void (*rumax_event_cb)(const char* source, const char* event_json, void* user_data);
 
 /* ------------------------------- lifecycle ------------------------------- */
 
