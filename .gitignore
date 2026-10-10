@@ -4,3 +4,4 @@
 .session.token
 **/*.kate-swp
 **/*.pem
+examples/cpp_demo/build/
