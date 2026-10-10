@@ -12,6 +12,7 @@ categories = ["api-bindings"]
 [lib]
 name = "rumax"
 path = "src/lib.rs"
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [[example]]
 name = "login"

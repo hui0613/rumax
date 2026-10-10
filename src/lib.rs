@@ -22,6 +22,9 @@ pub mod fingerprint;
 
 pub mod transport;
 
+/// C ABI (FFI) layer for calling the client from C / C++.
+pub mod ffi;
+
 use transport::{
     TransportFactory, 
     TransportReader, 
