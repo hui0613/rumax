@@ -131,7 +131,7 @@ impl NavigationPlanner {
 
         let transitions = get_transitions(self.current_screen);
         let weights: Vec<u32> = transitions.iter().map(|&(_, w)| w).collect();
-        let dist = WeightedIndex::new(&weights).expect("Неверные веса графа переходов");
+        let dist = WeightedIndex::new(&weights).expect("Invalid weights in transition graph");
         let next_screen = transitions[dist.sample(&mut rng)].0;
 
         if next_screen != self.current_screen {

@@ -45,7 +45,7 @@ impl MaxClient {
     pub async fn set_telemetry_chats(&self, chats: Vec<TelemetryChat>) {
         let mut state = self.state.lock().await;
         state.telemetry_chats = chats;
-        debug!("Телеметрия: загружено {} чатов", state.telemetry_chats.len());
+        debug!("Telemetry: loaded {} chats", state.telemetry_chats.len());
     }
 
     async fn sleep_between(&self, range: (u64, u64)) {
@@ -73,7 +73,7 @@ impl MaxClient {
         let payload_json = match serde_json::to_value(&payload) {
             Ok(val) => val,
             Err(e) => {
-                error!("Ошибка сериализации TelemetryPayload: {}", e);
+                error!("Failed to serialize TelemetryPayload: {}", e);
                 return;
             }
         };
@@ -81,12 +81,12 @@ impl MaxClient {
         match self.send_and_wait(5, payload_json, 0).await {
             Ok(data) => {
                 if let Some(err) = data.payload.get("error") {
-                    error!("API телеметрии вернуло ошибку: {}", err);
+                    error!("Telemetry API returned an error: {}", err);
                 } else {
-                    debug!("Успешно отправлено {} событий телеметрии", count);
+                    debug!("Successfully sent {} telemetry events", count);
                 }
             }
-            Err(e) => warn!("Ошибка отправки телеметрии: {}", e),
+            Err(e) => warn!("Failed to send telemetry: {}", e),
         }
     }
 
@@ -223,13 +223,13 @@ impl MaxClient {
         let mut shutdown_rx = match self.state.lock().await.shutdown_tx.as_ref() {
             Some(tx) => tx.subscribe(),
             None => {
-                error!("Не могу запустить телеметрию: shutdown_tx не инициализирован");
+                error!("Cannot start telemetry: shutdown_tx is not initialized");
                 return;
             }
         };
 
         tokio::spawn(async move {
-            info!("Задача телеметрии ожидает подключения...");
+            info!("Telemetry task waiting for connection...");
 
             loop {
                 let has_user_id = client.state.lock().await.user_id.is_some();
@@ -242,7 +242,7 @@ impl MaxClient {
                 }
             }
 
-            info!("Телеметрия: старт (ожидание startup_delay)");
+            info!("Telemetry: starting (waiting startup_delay)");
 
             tokio::select! {
                 _ = client.sleep_between(STARTUP_DELAY) => {},
@@ -278,7 +278,7 @@ impl MaxClient {
                     }
 
                     if !client.is_connected().await {
-                        warn!("Клиент отключен. Остановка телеметрии.");
+                        warn!("Client disconnected. Stopping telemetry.");
                         return;
                     }
 
@@ -336,7 +336,7 @@ impl MaxClient {
 
                 client.send_events(session_events).await;
 
-                debug!("Сессия завершена, ожидание session_idle_delay");
+                debug!("Session finished, waiting session_idle_delay");
                 tokio::select! {
                     _ = client.sleep_between(SESSION_IDLE_DELAY) => {},
                      _ = shutdown_rx.recv() => return,

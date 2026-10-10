@@ -38,7 +38,7 @@ use models::{Request, Response, Identity};
 pub use api::telemetry::TelemetryChat;
 use navigation::NavigationPlanner;
 
-pub use api::auth::SyncState;
+pub use api::auth::{SyncState, QrLoginSession};
 
 pub const MINTSIFRY_ROOT_CA: &[u8] = include_bytes!("../assets/rootca_ssl_rsa2022.crt");
 
@@ -172,7 +172,7 @@ impl MaxClient {
         state_lock.identity = Some(identity.clone());
 
         let (writer, reader): (Box<dyn TransportWriter>, Box<dyn TransportReader>) = if is_mobile {
-            info!("Подключение Mobile TCP/TLS...");
+            info!("Connecting via Mobile TCP/TLS...");
 
             let transport = MobileTransport::connect_tls(
                 &state_lock.mobile_host,
@@ -184,7 +184,7 @@ impl MaxClient {
             let (w, r) = transport.split();
             (Box::new(w), Box::new(r))
         } else {
-            info!("Подключение к WebSocket...");
+            info!("Connecting to WebSocket...");
             let req_builder = HttpRequestBuilder::new()
                 .header("Origin", HeaderValue::from_static(Constants::ORIGIN_HEADER))
                 .header("User-Agent", HeaderValue::from_static(Constants::USER_AGENT));
@@ -195,13 +195,13 @@ impl MaxClient {
                 .await
                 .map_err(|e| Error::ConnectionFailed(e.to_string()))?;
 
-            info!("WebSocket подключен.");
+            info!("WebSocket connected.");
             let transport = WebTransport::new(ws);
             let (w, r) = transport.split();
             (Box::new(w), Box::new(r))
         };
 
-        info!("Разделение потоков и запуск задач...");
+        info!("Splitting streams and spawning tasks...");
 
         state_lock.is_closed = false;
         
@@ -213,18 +213,18 @@ impl MaxClient {
         state_lock.session_id = Utc::now().timestamp_millis();
 
         tokio::spawn(Self::read_task(reader, pending_clone, event_tx, shutdown_rx_read, Arc::clone(&self.state)));
-        debug!("Задача read_task запущена.");
+        debug!("read_task spawned.");
         
         let ping_client = self.clone();
         tokio::spawn(Self::ping_task(ping_client, shutdown_rx_ping));
-        debug!("Задача ping_task запущена.");
+        debug!("ping_task spawned.");
         
         state_lock.writer = Some(writer);
         state_lock.shutdown_tx = Some(shutdown_tx);
         
         drop(state_lock);
         
-        debug!("Отправка Handshake");
+        debug!("Sending handshake");
         
         let handshake_payload = if is_mobile {
             json!({
@@ -245,7 +245,7 @@ impl MaxClient {
         if let Some(seed) = handshake_response.payload.get("callsSeed").and_then(|v| {
             v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
         }) {
-            debug!("Получен calls_seed: {}", seed);
+            debug!("Received calls_seed: {}", seed);
             self.state.lock().await.calls_seed = Some(seed);
         }
 
@@ -268,7 +268,7 @@ impl MaxClient {
         state.user_id = None;
         state.seq = 0;
         
-        info!("Клиент отключен, состояние сброшено.");
+        info!("Client disconnected, state reset.");
     }
     
     fn send_frame(&self, request: Request) -> std::pin::Pin<Box<dyn std::future::Future<Output = ClientResult<()>> + Send>> {
@@ -291,7 +291,7 @@ impl MaxClient {
 
             if should_reconnect {
                 if let Some(i) = identity {
-                    debug!("Реконнект внутри send_frame...");
+                    debug!("Reconnecting inside send_frame...");
                     this.connect(i, true).await?;
                 } else {
                     return Err(Error::ConnectionFailed("Device ID not set".to_string()));
@@ -331,7 +331,7 @@ impl MaxClient {
             }
         };
         
-        debug!("Отправка: {:?}", request);
+        debug!("Sending: {:?}", request);
         let _ = self.event_tx.send(json!({
             "type": "log",
             "request": request
@@ -341,7 +341,7 @@ impl MaxClient {
         
         match timeout(Constants::DEFAULT_TIMEOUT, rx).await {
             Ok(Ok(Ok(response))) => {
-                trace!("Получен ответ для seq: {}", response.seq);
+                trace!("Received response for seq: {}", response.seq);
                 if response.payload.get("error").is_some() {
                     Err(Error::ApiResponse(response.payload))
                 } else {
@@ -350,11 +350,11 @@ impl MaxClient {
             }
             Ok(Ok(Err(e))) => Err(e),
             Ok(Err(e)) => {
-                error!("Ошибка получения ответа (канал закрыт) для seq: {}", request.seq);
+                error!("Failed to receive response (channel closed) for seq: {}", request.seq);
                 Err(e.into())
             }
             Err(_) => {
-                warn!("Таймаут запроса для seq: {}", request.seq);
+                warn!("Request timeout for seq: {}", request.seq);
                 self.state.lock().await.pending.lock().unwrap().remove(&request.seq);
                 Err(Error::RequestTimeout(Constants::DEFAULT_TIMEOUT))
             }
@@ -393,7 +393,7 @@ impl MaxClient {
                             }
                         },
                         Ok(None) => {
-                            info!("Соединение закрыто (EOF)");
+                            info!("Connection closed (EOF)");
                             let _ = event_sender.send(json!({
                                 "type": "log",
                                 "response": "closed"
@@ -402,12 +402,12 @@ impl MaxClient {
                             s.writer = None;
                             let mut pending_guard = pending.lock().unwrap();
                             for (_, sender) in pending_guard.drain() {
-                                let _ = sender.send(Err(Error::ConnectionClosed("Соединение закрыто".to_string())));
+                                let _ = sender.send(Err(Error::ConnectionClosed("Connection closed".to_string())));
                             }
                             break;
                         },
                         Err(e) => {
-                            error!("Ошибка чтения транспорта:\n{}", e);
+                            error!("Transport read error:\n{}", e);
                             let _ = event_sender.send(json!({
                                 "type": "log",
                                 "response": "closed"
@@ -437,10 +437,10 @@ impl MaxClient {
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    debug!("Отправка Ping...");
+                    debug!("Sending ping...");
                     match client.send_and_wait(1, json!({ "interactive": true }), 0).await {
                         Ok(_) => {
-                            info!("Pong получен");
+                            info!("Pong received");
                         }
                         Err(e) => {
                             error!("Ping failed: {}. Stopping ping_task", e);
@@ -459,7 +459,7 @@ impl MaxClient {
                     }
                 }
                 _ = shutdown_rx.recv() => {
-                    info!("Получен сигнал завершения для ping_task");
+                    info!("Shutdown signal received for ping_task");
                     break;
                 }
             }

@@ -175,17 +175,17 @@ fn create_tls_config(use_custom_ca: bool, cert_path: Option<&str>) -> Result<Cli
     if use_custom_ca {
         let certs: Vec<CertificateDer> = if let Some(path) = cert_path {
             CertificateDer::pem_file_iter(path)
-                .map_err(|e| format!("Не удалось открыть файл {}: {}", path, e))?
+                .map_err(|e| format!("Failed to open file {}: {}", path, e))?
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| format!("Ошибка парсинга PEM файла: {}", e))?
+                .map_err(|e| format!("Failed to parse PEM file: {}", e))?
         } else {
             rustls_pki_types::CertificateDer::pem_slice_iter(DEFAULT_ROOT_CA)
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| format!("Ошибка парсинга встроенного PEM: {}", e))?
+                .map_err(|e| format!("Failed to parse built-in PEM: {}", e))?
         };
 
         for cert in certs {
-            root_store.add(cert).map_err(|e| format!("Ошибка добавления CA: {}", e))?;
+            root_store.add(cert).map_err(|e| format!("Failed to add CA: {}", e))?;
         }
     }
 
