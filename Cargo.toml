@@ -12,7 +12,8 @@ categories = ["api-bindings"]
 [lib]
 name = "rumax"
 path = "src/lib.rs"
-crate-type = ["cdylib", "staticlib", "rlib"]
+# 纯 Rust 客户端库：C ABI 已迁移到 gx_rust，此仓库不再产出 cdylib/staticlib
+crate-type = ["rlib"]
 
 [[example]]
 name = "login"
